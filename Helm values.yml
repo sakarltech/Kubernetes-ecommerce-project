@@ -1,0 +1,290 @@
+# helm-charts/ecommerce-app/values.yaml
+# Default values for ecommerce-app
+
+global:
+  imageRegistry: "docker.io"
+  imagePullSecrets: []
+  storageClass: "standard"
+
+# Application Configuration
+app:
+  name: ecommerce
+  version: "1.0.0"
+  environment: development
+
+# Frontend Service
+frontend:
+  enabled: true
+  name: frontend
+  image:
+    repository: nginx
+    tag: "1.21-alpine"
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 80
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 80
+    initialDelaySeconds: 30
+    periodSeconds: 10
+  readinessProbe:
+    httpGet:
+      path: /ready
+      port: 80
+    initialDelaySeconds: 5
+    periodSeconds: 5
+
+# Backend API Service
+backend:
+  enabled: true
+  name: backend-api
+  image:
+    repository: node
+    tag: "16-alpine"
+    pullPolicy: IfNotPresent
+  replicaCount: 3
+  service:
+    type: ClusterIP
+    port: 3000
+    targetPort: 3000
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  env:
+    NODE_ENV: development
+    PORT: 3000
+    DB_HOST: postgresql
+    DB_PORT: 5432
+    REDIS_HOST: redis
+    REDIS_PORT: 6379
+  livenessProbe:
+    httpGet:
+      path: /api/health
+      port: 3000
+    initialDelaySeconds: 30
+    periodSeconds: 10
+  readinessProbe:
+    httpGet:
+      path: /api/ready
+      port: 3000
+    initialDelaySeconds: 10
+    periodSeconds: 5
+
+# Payment Service
+paymentService:
+  enabled: true
+  name: payment-service
+  image:
+    repository: python
+    tag: "3.9-slim"
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  service:
+    type: ClusterIP
+    port: 5000
+    targetPort: 5000
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+  env:
+    FLASK_ENV: development
+    PORT: 5000
+
+# Database Configuration
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: secretpassword
+    username: ecommerce
+    password: ecommercepass
+    database: ecommerce_db
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClass: ""
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+
+# Redis Configuration
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: redispassword
+  master:
+    persistence:
+      enabled: true
+      size: 5Gi
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+
+# Ingress Configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: ecommerce.local
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+        - path: /api
+          pathType: Prefix
+          service: backend-api
+        - path: /payment
+          pathType: Prefix
+          service: payment-service
+  tls:
+    - secretName: ecommerce-tls
+      hosts:
+        - ecommerce.local
+
+# Horizontal Pod Autoscaler
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# Network Policies
+networkPolicy:
+  enabled: true
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: nginx-ingress-controller
+
+# Service Account
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# RBAC
+rbac:
+  create: true
+
+# Pod Security Context
+podSecurityContext:
+  fsGroup: 2000
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# Security Context
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# ConfigMap data
+configMap:
+  data:
+    app.properties: |
+      app.name=E-Commerce Platform
+      app.version=1.0.0
+      log.level=INFO
+      cache.ttl=3600
+    nginx.conf: |
+      server {
+          listen 80;
+          location / {
+              root /usr/share/nginx/html;
+              index index.html;
+          }
+          location /health {
+              return 200 'OK';
+              add_header Content-Type text/plain;
+          }
+      }
+
+# Secret data (base64 encoded)
+secret:
+  data:
+    database-url: cG9zdGdyZXNxbDovL2Vjb21tZXJjZTplY29tbWVyY2VwYXNzQHBvc3RncmVzcWw6NTQzMi9lY29tbWVyY2VfZGI=
+    jwt-secret: bXlzdXBlcnNlY3JldGp3dGtleWZvcmF1dGhlbnRpY2F0aW9u
+    stripe-api-key: c2tfdGVzdF80ZUFhbmQ5WWRGUG1XR2hsZ3VnMURTcVk=
+
+# Monitoring
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    path: /metrics
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Node Affinity
+nodeAffinity:
+  enabled: false
+  requiredDuringSchedulingIgnoredDuringExecution:
+    nodeSelectorTerms:
+    - matchExpressions:
+      - key: kubernetes.io/arch
+        operator: In
+        values:
+        - amd64
+
+# Pod Anti-Affinity
+podAntiAffinity:
+  enabled: true
+  preferredDuringSchedulingIgnoredDuringExecution:
+  - weight: 100
+    podAffinityTerm:
+      labelSelector:
+        matchExpressions:
+        - key: app.kubernetes.io/name
+          operator: In
+          values:
+          - ecommerce-app
+      topologyKey: kubernetes.io/hostname

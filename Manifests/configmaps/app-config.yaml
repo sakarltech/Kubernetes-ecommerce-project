@@ -1,0 +1,22 @@
+# k8s-manifests/configmaps/app-config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: ecommerce
+data:
+  app.properties: |
+    app.name=E-Commerce Platform
+    app.version=1.0.0
+    log.level=INFO
+    cache.ttl=3600
+    max.connections=100
+    timeout=30
+  database.properties: |
+    db.pool.size=10
+    db.connection.timeout=5000
+    db.idle.timeout=300000
+  features.properties: |
+    feature.payment.enabled=true
+    feature.notifications.enabled=true
+    feature.analytics.enabled=true

@@ -1,0 +1,164 @@
+# helm-charts/ecommerce-app/templates/deployment.yaml
+{{- range $service := list "frontend" "backend" "paymentService" }}
+{{- $serviceConfig := index $.Values $service }}
+{{- if $serviceConfig.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ecommerce-app.fullname" $ }}-{{ $serviceConfig.name }}
+  labels:
+    {{- include "ecommerce-app.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $serviceConfig.name }}
+spec:
+  {{- if not $.Values.hpa.enabled }}
+  replicas: {{ $serviceConfig.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "ecommerce-app.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ $serviceConfig.name }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") $ | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") $ | sha256sum }}
+      labels:
+        {{- include "ecommerce-app.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: {{ $serviceConfig.name }}
+    spec:
+      {{- with $.Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "ecommerce-app.serviceAccountName" $ }}
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      {{- if $.Values.nodeAffinity.enabled }}
+      affinity:
+        nodeAffinity:
+          {{- toYaml $.Values.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution | nindent 10 }}
+        {{- if $.Values.podAntiAffinity.enabled }}
+        podAntiAffinity:
+          {{- toYaml $.Values.podAntiAffinity.preferredDuringSchedulingIgnoredDuringExecution | nindent 10 }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: {{ $serviceConfig.name }}
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          image: "{{ $serviceConfig.image.repository }}:{{ $serviceConfig.image.tag }}"
+          imagePullPolicy: {{ $serviceConfig.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $serviceConfig.service.targetPort }}
+              protocol: TCP
+          {{- if $serviceConfig.livenessProbe }}
+          livenessProbe:
+            {{- toYaml $serviceConfig.livenessProbe | nindent 12 }}
+          {{- end }}
+          {{- if $serviceConfig.readinessProbe }}
+          readinessProbe:
+            {{- toYaml $serviceConfig.readinessProbe | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml $serviceConfig.resources | nindent 12 }}
+          env:
+            {{- if $serviceConfig.env }}
+            {{- range $key, $value := $serviceConfig.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- end }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ecommerce-app.fullname" $ }}-secret
+                  key: database-url
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ecommerce-app.fullname" $ }}-secret
+                  key: jwt-secret
+            {{- if eq $service "paymentService" }}
+            - name: STRIPE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ecommerce-app.fullname" $ }}-secret
+                  key: stripe-api-key
+            {{- end }}
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/config
+              readOnly: true
+            - name: tmp-volume
+              mountPath: /tmp
+            {{- if eq $service "frontend" }}
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: config-volume
+          configMap:
+            name: {{ include "ecommerce-app.fullname" $ }}-config
+        - name: tmp-volume
+          emptyDir: {}
+        {{- if eq $service "frontend" }}
+        - name: nginx-config
+          configMap:
+            name: {{ include "ecommerce-app.fullname" $ }}-nginx-config
+        {{- end }}
+{{- end }}
+{{- end }}
+
+---
+# StatefulSet for services requiring persistent storage
+{{- if .Values.postgresql.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "ecommerce-app.fullname" . }}-postgres
+  labels:
+    {{- include "ecommerce-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  serviceName: {{ include "ecommerce-app.fullname" . }}-postgres-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "ecommerce-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: database
+  template:
+    metadata:
+      labels:
+        {{- include "ecommerce-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: database
+    spec:
+      containers:
+        - name: postgresql
+          image: postgres:13-alpine
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.postgresql.auth.database }}
+            - name: POSTGRES_USER
+              value: {{ .Values.postgresql.auth.username }}
+            - name: POSTGRES_PASSWORD
+              value: {{ .Values.postgresql.auth.password }}
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+          resources:
+            {{- toYaml .Values.postgresql.resources | nindent 12 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-storage
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: {{ .Values.global.storageClass }}
+        resources:
+          requests:
+            storage: {{ .Values.postgresql.primary.persistence.size }}
+{{- end }}

@@ -1,0 +1,34 @@
+# helm-charts/ecommerce-app/Chart.yaml
+apiVersion: v2
+name: ecommerce-app
+description: A comprehensive e-commerce application demonstrating Kubernetes concepts
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - ecommerce
+  - microservices
+  - kubernetes
+  - demo
+home: https://github.com/your-org/ecommerce-k8s
+sources:
+  - https://github.com/your-org/ecommerce-k8s
+maintainers:
+  - name: DevOps Team
+    email: devops@company.com
+dependencies:
+  - name: postgresql
+    version: "12.1.2"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+  - name: redis
+    version: "17.3.7"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled
+  - name: nginx-ingress-controller
+    version: "9.3.3"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: ingress.enabled
+annotations:
+  category: E-Commerce
+  licenses: Apache-2.0
