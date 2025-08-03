@@ -1,0 +1,16 @@
+# k8s-manifests/backend/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-api
+  namespace: ecommerce
+  labels:
+    app: backend-api
+spec:
+  selector:
+    app: backend-api
+  ports:
+  - name: http
+    port: 3000
+    targetPort: 3000
+  type: ClusterIP

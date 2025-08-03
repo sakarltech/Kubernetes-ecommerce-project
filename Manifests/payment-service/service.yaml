@@ -1,0 +1,16 @@
+# k8s-manifests/payment-service/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+  namespace: ecommerce
+  labels:
+    app: payment-service
+spec:
+  selector:
+    app: payment-service
+  ports:
+  - name: http
+    port: 5000
+    targetPort: 5000
+  type: ClusterIP

@@ -1,0 +1,17 @@
+# k8s-manifests/monitoring/node-exporter-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-exporter
+  namespace: ecommerce
+  labels:
+    app: node-exporter
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: node-exporter
+  ports:
+  - name: node-exporter
+    port: 9100
+    targetPort: 9100
